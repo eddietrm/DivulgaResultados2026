@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eleições 2026 - Apuração em Tempo Real</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Google GeoCharts para o Mapa -->
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+        .progress-bar {
+            transition: width 1.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        /* Barra de rolagem customizada para as listas longas */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f5f9; 
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1; 
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8; 
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+            100% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .live-indicator {
+            animation: pulse-ring 2s infinite;
+        }
+    </style>
+</head>
+<body class="text-slate-800 antialiased min-h-screen flex flex-col">
+
+    <header class="bg-slate-900 text-white sticky top-0 z-50 shadow-md">
+        <div class="max-w-[1600px] mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <svg class="w-7 h-7 text-emerald-500" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 9h-2V7h-2v5H6v2h2v5h2v-5h2v-2z"/>
+                </svg>
+                <h1 class="text-lg md:text-xl font-bold tracking-tight">Eleições 2026 <span class="font-normal text-slate-400 hidden sm:inline">| Apuração</span></h1>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="hidden sm:flex flex-col items-end text-[10px] font-medium text-slate-400 bg-slate-800 px-3 py-1 rounded border border-slate-700">
+                    <span>Req. API TSE (seg)</span>
+                    <span id="api-counter" class="text-white font-bold transition-colors text-xs">0 / 100</span>
+                </div>
+                <div class="flex items-center gap-2 bg-slate-800 px-3 py-1 rounded-full border border-slate-700">
+                    <div class="w-2.5 h-2.5 bg-red-500 rounded-full live-indicator"></div>
+                    <span class="text-xs font-semibold text-red-400 uppercase tracking-wider">Ao Vivo</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-grow max-w-[1600px] mx-auto px-4 py-6 w-full">
+        <div class="flex flex-col lg:flex-row gap-6 items-start">
+            
+            <!-- PAINEL LATERAL (Totalização e Mapa) -->
+            <section class="w-full lg:w-[320px] shrink-0 flex flex-col gap-6 lg:sticky lg:top-20">
+                
+                <!-- Totalização Urnas -->
+                <div class="bg-white rounded-2xl shadow-sm p-6 border border-slate-200">
+                    <h2 class="text-xl font-bold text-slate-800">Totalização</h2>
+                    <p id="api-status-text" class="text-amber-600 text-xs mt-1 font-medium bg-amber-50 px-2 py-1 rounded inline-block">Aguardando dados (17h)...</p>
+                    
+                    <div class="mt-4">
+                        <span id="urnas-percent-text" class="text-5xl font-extrabold text-slate-900 tracking-tighter">0,00%</span>
+                        <p class="text-slate-500 font-medium text-sm mt-1">das seções apuradas</p>
+                    </div>
+                    
+                    <div class="w-full bg-slate-100 rounded-full h-3 overflow-hidden mt-4">
+                        <div id="urnas-progress-bar" class="bg-emerald-500 h-3 rounded-full progress-bar" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <!-- Mapa GeoCharts Brasil -->
+                <div class="bg-white rounded-2xl shadow-sm p-4 border border-slate-200 flex flex-col items-center">
+                    <h3 class="text-sm font-bold text-slate-700 w-full text-center mb-2">Apuração por Estado</h3>
+                    <!-- O contêiner onde o Google Charts vai injetar o SVG -->
+                    <div id="brazil-map" class="w-full h-[280px]"></div>
+                </div>
+            </section>
+
+            <!-- ÁREA DE RESULTADOS (Grid Principal) -->
+            <div class="flex-grow w-full grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                
+                <!-- Presidente -->
+                <section class="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col h-[500px]">
+                    <div class="bg-slate-50 px-5 py-4 border-b border-slate-200 rounded-t-2xl">
+                        <h2 class="text-lg font-bold text-slate-800 uppercase tracking-wide">Presidente</h2>
+                        <p class="text-slate-500 text-xs">Brasil (Nacional)</p>
+                    </div>
+                    <div class="p-4 flex-grow overflow-y-auto custom-scrollbar">
+                        <ul id="lista-presidente" class="space-y-3"></ul>
+                    </div>
+                </section>
+
+                <!-- Governador -->
+                <section class="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col h-[500px]">
+                    <div class="bg-slate-50 px-5 py-4 border-b border-slate-200 rounded-t-2xl">
+                        <h2 class="text-lg font-bold text-slate-800 uppercase tracking-wide">Governador</h2>
+                        <p class="text-slate-500 text-xs">São Paulo (Estadual)</p>
+                    </div>
+                    <div class="p-4 flex-grow overflow-y-auto custom-scrollbar">
+                        <ul id="lista-governador" class="space-y-3"></ul>
+                    </div>
+                </section>
+
+                <!-- Senador -->
+                <section class="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col h-[500px]">
+                    <div class="bg-slate-50 px-5 py-4 border-b border-slate-200 rounded-t-2xl">
+                        <h2 class="text-lg font-bold text-slate-800 uppercase tracking-wide">Senador</h2>
+                        <p class="text-slate-500 text-xs">São Paulo (Estadual)</p>
+                    </div>
+                    <div class="p-4 flex-grow overflow-y-auto custom-scrollbar">
+                        <ul id="lista-senador" class="space-y-3"></ul>
+                    </div>
+                </section>
+
+                <!-- Wrapper para Deputados manter simetria (ocupa 3 colunas no XL e se divide em 2 internamente) -->
+                <div class="xl:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Deputado Federal (Com Pesquisa) -->
+                    <section class="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col h-[500px]">
+                        <div class="bg-slate-50 px-5 py-4 border-b border-slate-200 rounded-t-2xl">
+                            <div class="flex justify-between items-center mb-3">
+                                <div>
+                                    <h2 class="text-lg font-bold text-slate-800 uppercase tracking-wide">Dep. Federal</h2>
+                                    <p class="text-slate-500 text-xs">São Paulo</p>
+                                </div>
+                            </div>
+                            <!-- Barra de Pesquisa -->
+                            <div class="relative">
+                                <input type="text" id="search-fed" placeholder="Buscar por nome ou partido..." class="w-full bg-white border border-slate-300 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 placeholder-slate-400">
+                            </div>
+                        </div>
+                        <div class="p-4 flex-grow overflow-y-auto custom-scrollbar">
+                            <ul id="lista-deputado-federal" class="space-y-3"></ul>
+                        </div>
+                    </section>
+
+                    <!-- Deputado Estadual (Com Pesquisa) -->
+                    <section class="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col h-[500px]">
+                        <div class="bg-slate-50 px-5 py-4 border-b border-slate-200 rounded-t-2xl">
+                            <div class="flex justify-between items-center mb-3">
+                                <div>
+                                    <h2 class="text-lg font-bold text-slate-800 uppercase tracking-wide">Dep. Estadual</h2>
+                                    <p class="text-slate-500 text-xs">São Paulo</p>
+                                </div>
+                            </div>
+                            <!-- Barra de Pesquisa -->
+                            <div class="relative">
+                                <input type="text" id="search-est" placeholder="Buscar por nome ou partido..." class="w-full bg-white border border-slate-300 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 placeholder-slate-400">
+                            </div>
+                        </div>
+                        <div class="p-4 flex-grow overflow-y-auto custom-scrollbar">
+                            <ul id="lista-deputado-estadual" class="space-y-3"></ul>
+                        </div>
+                    </section>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <script>
+        /**
+         * ESTADO DA APLICAÇÃO (Dados zerados aguardando 17h)
+         */
+        let appState = {
+            urnasApuradas: 0,
+            presidente: [],
+            governador: [],
+            senador: [],
+            deputadoFederal: [],
+            deputadoEstadual: []
+        };
+
+        // Filtros de pesquisa
+        let filters = { federal: '', estadual: '' };
+
+        // Parâmetros Oficiais TSE 2026
+        const TSE_PARAMS = {
+            baseUrl: "https://resultados.tse.jus.br/oficial/ele2026",
+            pleito: "3220",
+            federal: "6257",
+            estadual: "6259",
+            uf: "sp" // Usando SP como exemplo estadual
+        };
+
+        // Controle de requisições (Limite de 100/segundo do TSE)
+        let apiState = {
+            requestsThisSecond: 0,
+            maxRequestsPerSecond: 100,
+            // Proteção contra bloqueio de IP por Erro 404
+            activeEndpoints: {
+                presidente: true,
+                governador: true,
+                senador: true,
+                deputados: true
+            }
+        };
+
+        const formatNumber = (num) => num.toLocaleString('pt-BR');
+        const formatPercent = (num) => num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%';
+
+        // URL da foto oficial do candidato no DivulgaCand
+        function getCandidatoFoto(sqcand, codigoEleicao) {
+            // Se o candidato não tiver sequencial válido (votos brancos/nulos ou não registrado)
+            if (!sqcand) return ''; 
+            return `https://divulgacandcontas.tse.jus.br/divulga/rest/v1/candidatura/buscar/foto/2/2026/${sqcand}`;
+        }
+
+        // Criador de blocos HTML dos candidatos
+        function createCandidateHTML(candidato, index, codigoEleicao) {
+            const barColor = index === 0 ? 'bg-emerald-500' : (index === 1 ? 'bg-blue-500' : 'bg-slate-400');
+            const ringColor = index === 0 ? 'ring-emerald-500' : (index === 1 ? 'ring-blue-500' : 'ring-slate-300');
+            
+            // Tratamento para Placeholder (Iniciais do nome)
+            const parts = candidato.nome ? candidato.nome.split(' ') : [''];
+            const initial1 = parts[0] ? parts[0].charAt(0) : '';
+            const initial2 = parts.length > 1 ? parts[1].charAt(0) : '';
+            const initials = encodeURIComponent((initial1 + initial2).toUpperCase() || '?');
+            const placeholderImg = `https://placehold.co/100x100/e2e8f0/475569?text=${initials}`;
+            
+            // Imagem (Tenta Oficial, cai pro Placeholder se der erro)
+            const imgHtml = candidato.id 
+                ? `<img src="${getCandidatoFoto(candidato.id, codigoEleicao)}" onerror="this.onerror=null;this.src='${placeholderImg}';" alt="${candidato.nome}" class="w-12 h-12 rounded-full object-cover ring-2 ring-offset-2 ${ringColor} bg-white shrink-0">`
+                : `<img src="${placeholderImg}" alt="${candidato.nome}" class="w-12 h-12 rounded-full object-cover ring-2 ring-offset-2 ${ringColor} shrink-0">`;
+
+            return `
+                <li class="flex items-center gap-3 bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                    ${imgHtml}
+                    <div class="flex-grow min-w-0">
+                        <div class="flex justify-between items-start mb-1">
+                            <div class="truncate pr-2">
+                                <h3 class="font-bold text-slate-800 text-sm leading-tight truncate">${index + 1}º ${candidato.nome}</h3>
+                                <p class="text-[11px] text-slate-500 font-medium truncate">${candidato.partido}</p>
+                            </div>
+                            <div class="text-right shrink-0">
+                                <span class="font-bold text-base text-slate-900 block leading-none mb-0.5">${formatPercent(candidato.percentual)}</span>
+                                <span class="text-[10px] text-slate-500 font-medium bg-slate-100 px-1.5 py-0.5 rounded">${formatNumber(candidato.votos)} v</span>
+                            </div>
+                        </div>
+                        <div class="w-full bg-slate-100 rounded-full h-1 mt-1.5">
+                            <div class="${barColor} h-1 rounded-full progress-bar" style="width: ${Math.min(candidato.percentual, 100)}%"></div>
+                        </div>
+                    </div>
+                </li>
+            `;
+        }
+
+        google.charts.load('current', {
+            'packages':['geochart'],
+            'mapsApiKey': '' // A API Key não é estritamente necessária para visualização básica
+        });
+
+        let mapDataArray = [['Estado', 'Apuração %']];
+        const ufs = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
+        // Inicializa mapa zerado
+        ufs.forEach(uf => mapDataArray.push([{v: 'BR-' + uf, f: uf}, 0]));
+
+        function drawMap() {
+            if (!google.visualization) return;
+            const data = google.visualization.arrayToDataTable(mapDataArray);
+            const options = {
+                region: 'BR', // Foco no Brasil
+                resolution: 'provinces',
+                colorAxis: {colors: ['#e2e8f0', '#10b981']}, // Cinza (0%) até Verde (100%)
+                backgroundColor: 'transparent',
+                datalessRegionColor: '#f8fafc',
+                defaultColor: '#e2e8f0',
+                legend: 'none',
+                tooltip: {textStyle: {fontName: 'Inter'}}
+            };
+            const chart = new google.visualization.GeoChart(document.getElementById('brazil-map'));
+            chart.draw(data, options);
+        }
+        google.charts.setOnLoadCallback(drawMap);
+
+        // Event Listeners de Pesquisa
+        document.getElementById('search-fed').addEventListener('input', (e) => {
+            filters.federal = e.target.value.toLowerCase();
+            updateDOM();
+        });
+        document.getElementById('search-est').addEventListener('input', (e) => {
+            filters.estadual = e.target.value.toLowerCase();
+            updateDOM();
+        });
+
+        function filterAndSort(list, searchTerm) {
+            if (!searchTerm) return list.slice(0, 10); // Mostra Top 10 se não houver pesquisa
+            return list.filter(c => c.nome.toLowerCase().includes(searchTerm) || c.partido.toLowerCase().includes(searchTerm));
+        }
+
+        function updateDOM() {
+            // Atualiza indicadores numéricos
+            document.getElementById('urnas-percent-text').innerText = formatPercent(appState.urnasApuradas);
+            document.getElementById('urnas-progress-bar').style.width = appState.urnasApuradas + '%';
+            
+            const emptyMessage = '<li class="text-center text-slate-500 py-10 text-sm font-medium flex flex-col items-center gap-2"><svg class="w-8 h-8 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>Aguardando apuração...</li>';
+
+            // Listas filtradas
+            const filteredFederal = filterAndSort(appState.deputadoFederal, filters.federal);
+            const filteredEstadual = filterAndSort(appState.deputadoEstadual, filters.estadual);
+
+            // Injeta o HTML passando o código respectivo da eleição para carregar as fotos
+            document.getElementById('lista-presidente').innerHTML = appState.presidente.length ? appState.presidente.map((c, i) => createCandidateHTML(c, i, TSE_PARAMS.federal)).join('') : emptyMessage;
+            document.getElementById('lista-governador').innerHTML = appState.governador.length ? appState.governador.map((c, i) => createCandidateHTML(c, i, TSE_PARAMS.estadual)).join('') : emptyMessage;
+            document.getElementById('lista-senador').innerHTML = appState.senador.length ? appState.senador.map((c, i) => createCandidateHTML(c, i, TSE_PARAMS.estadual)).join('') : emptyMessage;
+            
+            const noResultsMsg = '<li class="text-center text-slate-500 py-4 text-sm font-medium">Nenhum candidato encontrado.</li>';
+            document.getElementById('lista-deputado-federal').innerHTML = appState.deputadoFederal.length ? (filteredFederal.length ? filteredFederal.map((c, i) => createCandidateHTML(c, i, TSE_PARAMS.estadual)).join('') : noResultsMsg) : emptyMessage;
+            document.getElementById('lista-deputado-estadual').innerHTML = appState.deputadoEstadual.length ? (filteredEstadual.length ? filteredEstadual.map((c, i) => createCandidateHTML(c, i, TSE_PARAMS.estadual)).join('') : noResultsMsg) : emptyMessage;
+        }
+
+        function parseTSECandidates(candData) {
+            if (!candData) return [];
+            return candData.map((c) => ({
+                id: c.sqcand,
+                nome: c.nm,
+                partido: c.cc ? c.cc.split('-')[0].trim() : 'N/A', // Sigla do partido
+                votos: parseInt(c.vap) || 0,
+                percentual: parseFloat(c.pvap.replace(',', '.')) || 0
+            })).sort((a, b) => b.votos - a.votos); // Ordena do mais votado pro menos votado
+        }
+
+        async function fetchRealTSEData() {
+            // Controle de Rate Limit
+            if (apiState.requestsThisSecond >= apiState.maxRequestsPerSecond) return;
+            
+            const statusEl = document.getElementById('api-status-text');
+
+            // Construtores de URL do TSE (Padrão Oficial)
+            // ex: https://resultados.tse.jus.br/oficial/ele2026/arquivo-abrangencia/br/br-e006257-c.json
+            const urlPres = `${TSE_PARAMS.baseUrl}/arquivo-abrangencia/br/br-e00${TSE_PARAMS.federal}-c.json`;
+            const urlGov = `${TSE_PARAMS.baseUrl}/arquivo-abrangencia/${TSE_PARAMS.uf}/${TSE_PARAMS.uf}-e00${TSE_PARAMS.estadual}-c.json`;
+
+            try {
+                // Requisição paralela (Promise.all) economiza requisições
+                const requests = [];
+                if(apiState.activeEndpoints.presidente) {
+                    requests.push(fetch(urlPres).then(r => {
+                        if(r.status === 404) throw {type: '404', endpoint: 'presidente'};
+                        return r.json().then(data => ({...data, _origem: 'br'})); // Marca a origem para diferenciar
+                    }));
+                }
+                
+                // Dispara requisições e contabiliza no limite
+                apiState.requestsThisSecond += requests.length;
+                document.getElementById('api-counter').innerText = `${apiState.requestsThisSecond} / 100`;
+
+                if (requests.length === 0) {
+                    statusEl.innerText = "Aguardando início da totalização...";
+                    return; 
+                }
+
+                const responses = await Promise.all(requests.map(p => p.catch(e => e))); // Captura erros individuais
+
+                // Processamento dos dados (se houver)
+                let gotData = false;
+                responses.forEach(res => {
+                    if (res && res.type === '404') {
+                        // Desativa a rota temporariamente para não tomar banimento de IP
+                        apiState.activeEndpoints[res.endpoint] = false; 
+                    } else if (res && !res.type) {
+                        gotData = true;
+                        // Mapeia dados
+                        if(res.cd === "1" && res._origem === 'br') { // Presidente Nacional
+                            appState.urnasApuradas = parseFloat(res.pst.replace(',', '.'));
+                            appState.presidente = parseTSECandidates(res.cand);
+                        }
+                        // Lógica de Governador/Senador seguiria o mesmo fluxo identificando cargos (cargos 3, 5, 6, 7)
+                    }
+                });
+
+                if (gotData) {
+                    statusEl.innerText = "Conectado à Justiça Eleitoral";
+                    statusEl.className = "text-emerald-600 text-xs mt-1 font-medium bg-emerald-50 px-2 py-1 rounded inline-block";
+                    updateDOM();
+                }
+
+            } catch (error) {
+                console.warn("Falha na sincronização:", error);
+            }
+        }
+
+        window.onload = () => {
+            updateDOM(); // Renderiza estado vazio inicial
+            
+            // Cronômetro do Limite do TSE: Zera as requisições a cada 1 segundo
+            setInterval(() => {
+                apiState.requestsThisSecond = 0;
+                document.getElementById('api-counter').innerText = `0 / 100`;
+            }, 1000);
+
+            // Cronômetro de Retry (Tenta religar rotas 404 a cada 5 minutos)
+            setInterval(() => {
+                apiState.activeEndpoints = { presidente: true, governador: true, senador: true, deputados: true };
+                console.log("Tentando reconectar rotas pendentes...");
+            }, 300000);
+
+            // Loop de Polling (10s é o recomendado para não engargalar o sistema do TSE)
+            setInterval(fetchRealTSEData, 10000);
+            
+            // Chama uma primeira vez
+            fetchRealTSEData();
+            
+            // Redesenha mapa se a tela mudar de tamanho
+            window.addEventListener('resize', drawMap);
+        };
+    </script>
+</body>
+</html>
